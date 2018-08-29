@@ -10,9 +10,9 @@
 参数	描述	备注	类型	默认值
 WRBPrice	波段底部价格	波段下行阶段的底部价格如果达到可以满仓	数字型(number)	300
 OperateFineness	买卖操作的粒度	单次买入卖出的币数量	数字型(number)	80
-BalanceLimit	买入金额数量限制	限制在这个交易对总共可以买入的金额,0值为账户全部余额	数字型(number)	300
 GuideBuyPrice	指导买入价	开始买入的指导价格	数字型(number)	80
 BuyPoint	买入点	指导价或是上次买入价下跌几个点之后开始买入	数字型(number)	0.03
+BalanceLimit	买入金额数量限制	限制在这个交易对总共可以买入的金额,0值为账户全部余额	数字型(number)	300
 AutoFull	到达底部价格自动满仓	由此参数决定是否在价格到达底部后操作买入满仓	布尔型(true/false)	false
 StopLoss	止损线强制平仓价格	下行买入过程中一路下行达到此止损线要操作止损平仓	数字型(number)	300
 -------------------------------
@@ -41,6 +41,8 @@ var StartTime = _D();	//策略启动时间
 var TickTimes = 0;		//刷新次数
 var ArgTables;		//已经处理好的用于显示的参数表，当参数更新时置空重新生成，以加快刷新速度
 var AccountTables;	//当前的账户信息表，如果当前已经有表，只要更新当前交易对，这样可以加快刷新速度，减少内存使用
+var LastLog = 0;	//上一次输出日志
+var DoingStopLoss = false;	//正在操作止损
 
 //初始运行检测
 function checkArgs(){
@@ -113,19 +115,26 @@ function init(){
 	Log("波段量化交易策略启动...");  
 
 	//检测参数
-	checkArgs();
+	if(!checkArgs()) return;
 	
+	//之前已经完成清除旧日志
+	if(_G("WaveRangFinish")){
+		LogReset();
+		_G("WaveRangFinish", null);
+	}
+		
 	//初始化存储变量
-	if(_G("TotalProfit")) _G("TotalProfit", 0);
-	if(_G("LastOrderId")) _G("LastOrderId", 0);
-	if(_G("OperatingStatus")) _G("OperatingStatus", OPERATE_STATUS_NONE);
-	if(_G("AvgPrice")) _G("AvgPrice", 0);
-	if(_G("LastBuyPrice")) _G("LastBuyPrice", 0);
-	if(_G("LastSellPrice")) _G("LastSellPrice", 0);
-	if(_G("ViaGoldArea")) _G("ViaGoldArea", 0);
-	if(_G("BeforeBuyingStocks")) _G("BeforeBuyingStocks", 0);
-	if(_G("BuyTimes")) _G("BuyTimes", 0);
-	if(_G("SellTimes")) _G("SellTimes", 0);
+	if(!_G("TotalProfit")) _G("TotalProfit", 0);
+	if(!_G("LastOrderId")) _G("LastOrderId", 0);
+	if(!_G("OperatingStatus")) _G("OperatingStatus", OPERATE_STATUS_NONE);
+	if(!_G("AvgPrice")) _G("AvgPrice", 0);
+	if(!_G("LastBuyPrice")) _G("LastBuyPrice", 0);
+	if(!_G("LastSellPrice")) _G("LastSellPrice", 0);
+	if(!_G("ViaGoldArea")) _G("ViaGoldArea", 0);
+	if(!_G("BeforeBuyingStocks")) _G("BeforeBuyingStocks", 0);
+	if(!_G("BuyTimes")) _G("BuyTimes", 0);
+	if(!_G("SellTimes")) _G("SellTimes", 0);
+	if(!_G("WaveRangFinish")) _G("WaveRangFinish", 0);
 }
 
 //获取当前时间戳
@@ -134,7 +143,6 @@ function getTimestamp(){
 }
 
 function Cross(a, b) {
-    var pfnMA = [TA.EMA, TA.MA, talib.KAMA][MAType];
     var crossNum = 0;
     var arr1 = [];
     var arr2 = [];
@@ -142,16 +150,15 @@ function Cross(a, b) {
         arr1 = a;
         arr2 = b;
     } else {
-        var records = null;
-        while (true) {
-            records = exchange.GetRecords();
-            if (records && records.length > a && records.length > b) {
-                break;
-            }
-            Sleep(1000);
-        }
-        arr1 = pfnMA(records, a);
-        arr2 = pfnMA(records, b);
+        var records = _C(exchange.GetRecords);
+		if (records && records.length < b) {
+			var record = records[0];
+			for(var i = 0;i<b;i++){
+				records.unshift(record);
+			}
+		}
+        arr1 = TA.EMA(records, a);
+        arr2 = TA.EMA(records, b);
     }
     if (arr1.length !== arr2.length) {
         throw "array length not equal";
@@ -179,7 +186,7 @@ function Cross(a, b) {
 
 
 //处理卖出成功之后数据的调整
-function changeDataForSell(tp,account,order){
+function changeDataForSell(account,order){
 	//算出扣除平台手续费后实际的数量
 	var avgPrice = _G("AvgPrice");
 	var TotalProfit = _G("TotalProfit");
@@ -329,11 +336,18 @@ function onTick() {
     var orderid = 0;
 	var isOperated = false;	
 
+	//判断止损有没有完成
+	if(DoingStopLoss && coinAmount <= MPOMinSellAmount){
+		Log("止损操作已经完成。");
+		_G("WaveRangFinish", 1);
+		return;
+	}
+	
 	//获取行情数据
-    CrossNum = Cross(7, 21);
+    CrossNum = Cross(9, 26);
     if (CrossNum > 0) {
 		//如果超过2，就更改通过金叉标识
-		if(CrossNum >= 2 && !viaGoldArea){
+		if(CrossNum >= 2 && !viaGoldArea && coinAmount >= MPOMinSellAmount){
 			Log("更改通过金叉标识为1");
 			viaGoldArea = 1;
 			_G("ViaGoldArea", viaGoldArea);
@@ -344,12 +358,16 @@ function onTick() {
 			Log("更改通过金叉标识为0");
 			viaGoldArea = 0;
 			_G("ViaGoldArea", viaGoldArea);
+			_G("WaveRangFinish", 1);
 		}
     }
-    var baseBuyPrice = lastBuyPrice ? lastBuyPrice : GuideBuyPrice;
-    var baseSellPrice = lastSellPrice ? lastSellPrice : GuideSellPrice;
+    var baseBuyPrice = lastBuyPrice ? lastBuyPrice : GuideBuyPrice * (1 + BuyPoint);
+    var baseSellPrice = lastSellPrice ? lastSellPrice : GuideSellPrice * (1 - SellPoint);
 	//评估买入
-	if (CrossNum < 0 && Account.Balance > MPOMinBuyAmount && (BalanceLimit > 0 && costTotal < BalanceLimit || BalanceLimit == 0) && (Ticker.Sell < baseBuyPrice * (1 - BuyPoint - BuyFee) || AutoFull && Ticker.Sell < WRBPrice)) {
+	if (CrossNum < 0 && Account.Balance > MPOMinBuyAmount && !DoingStopLoss && (BalanceLimit > 0 && costTotal < BalanceLimit || BalanceLimit == 0) && (Ticker.Sell < baseBuyPrice * (1 - BuyPoint) || AutoFull && Ticker.Sell < WRBPrice)) {
+		if(AutoFull && Ticker.Sell < WRBPrice){
+			Log("价格达到预定波段底部价格线，按操作粒度进行买入到满仓。");
+		}
 		//判断当前余额下可买入数量
 		var canpay = Account.Balance;
 		if(BalanceLimit > 0){
@@ -375,11 +393,12 @@ function onTick() {
 	}
 	if(!orderid){
 		//评估卖出
-		if (coinAmount > MPOMinSellAmount && (CrossNum > 0 && (Ticker.Buy > TPPrice || Ticker.Buy > baseSellPrice * (1 + SellPoint + SellFee)) || DeathClearAll && viaGoldArea && (CrossNum === -1 || CrossNum === -2) && Ticker.Buy > avgPrice || CrossNum < 0 && Ticker.Buy <= StopLoss)) {
+		if (coinAmount > MPOMinSellAmount && (CrossNum > 0 && (Ticker.Buy > TPPrice || Ticker.Buy > baseSellPrice * (1 + SellPoint)) || DeathClearAll && viaGoldArea && (CrossNum === -1 || CrossNum === -2) && Ticker.Buy > avgPrice || CrossNum < 0 && Ticker.Buy <= StopLoss)) {
 			var dosell = true;
 			if(CrossNum < 0){
 				if(Ticker.Buy <= StopLoss){
 					Log("价格跌下止损线，对现有持仓进行强制平仓。");
+					if(!DoingStopLoss) DoingStopLoss = true;
 				}else{
 					Log("进入了死叉，对现有获利盘持仓进行平仓。");
 				}
@@ -396,14 +415,18 @@ function onTick() {
 				orderid = exchange.Sell(-1, opAmount);
 				_G("OperatingStatus",OPERATE_STATUS_SELL);
 			}else{
-				if(debug) Log("当前持仓数量小于最小持仓量，没有币可卖，看机会再买入。");
+				Log("当前持仓数量小于最小持仓量，没有币可卖，看机会再买入。");
 			}
 		}
 		if(!orderid){
-			if (CrossNum < 0 ){
-				if(debug) Log("价格没有下跌到买入点，继续观察行情...");
-			}else{
-				if(debug) Log("价格没有上涨到卖出点，继续观察行情...");
+			var now = getTimestamp();
+			if(now > LastLog + 900000 ){
+				LastLog = now;
+				if (CrossNum < 0 ){
+					Log("当前EMA交叉数",CrossNum,"，持仓量",coinAmount,"，币价",Ticker.Last,"，价格没有下跌到买入点，继续观察行情...");
+				}else{
+					Log("当前EMA交叉数",CrossNum,"，持仓量",coinAmount,"，币价",Ticker.Last,"，价格没有上涨到卖出点，继续观察行情...");
+				}
 			}
 		}
 	}
@@ -411,10 +434,10 @@ function onTick() {
 	if(isOperated){
 		if (orderid) {
 			_G("LastOrderId",orderid);
-			if(debug) Log("订单发送成功，订单编号：",orderid);
+			Log("订单发送成功，订单编号：",orderid);
 		}else{
 			_G("OperatingStatus",OPERATE_STATUS_NONE);
-			if(debug) Log("订单发送失败，取消正在操作状态");
+			Log("订单发送失败，取消正在操作状态");
 		}
 	}
 
@@ -454,18 +477,18 @@ function onTick() {
 		var accounttable1 = {};
 		accounttable1.type="table";
 		accounttable1.title = "交易状态信息";
-		accounttable1.cols = ['可用余额','冻结余额','冻结币数','可用币数','持仓均价','持仓成本','当前币价','持币价值','上次买入价','上次卖出价','买入次数','卖出次数','总交易次数'];
+		accounttable1.cols = ['可用余额','可用币数','持仓均价','持仓成本','当前币价','持币价值','上次买入价','上次卖出价','买入次数','卖出次数','总交易次数'];
 		var rows = [];
-		rows.push([parseFloat(Account.Balance).toFixed(8), parseFloat(Account.FrozenBalance).toFixed(8), parseFloat((Account.FrozenStocks+0).toFixed(8)), parseFloat((Account.Stocks+0).toFixed(8)), avgPrice, costTotal, 
-		Ticker.Last, stockValue,  parseFloat(lastBuyPrice).toFixed(PriceDecimalPlace),  parseFloat(lastSellPrice).toFixed(PriceDecimalPlace)]);
+		rows.push([parseFloat(Account.Balance).toFixed(8), parseFloat((Account.Stocks+0).toFixed(8)), avgPrice, costTotal, 
+		Ticker.Last, stockValue,  parseFloat(lastBuyPrice).toFixed(PriceDecimalPlace),  parseFloat(lastSellPrice).toFixed(PriceDecimalPlace), _G("BuyTimes"), _G("SellTimes"), _G("BuyTimes")+_G("SellTimes")]);
 		accounttable1.rows = rows;
 		accounttables.push(accounttable1);
 		AccountTables = accounttables;
 	}else{
 		var accounttable1 = AccountTables[0];
 		var newrows = [];
-		newrows.push([parseFloat(i.Balance).toFixed(8), parseFloat(i.FrozenBalance).toFixed(8), parseFloat((i.FrozenStocks+0).toFixed(8)), parseFloat((i.Stocks+0).toFixed(8)), i.AvgPrice, i.CostTotal, 
-			i.TickerLast, i.StockValue,  parseFloat(i.LastBuyPrice).toFixed(PriceDecimalPlace),  parseFloat(i.LastSellPrice).toFixed(PriceDecimalPlace)]);
+		newrows.push([parseFloat(Account.Balance).toFixed(8), parseFloat((Account.Stocks+0).toFixed(8)), avgPrice, costTotal, 
+		Ticker.Last, stockValue,  parseFloat(lastBuyPrice).toFixed(PriceDecimalPlace),  parseFloat(lastSellPrice).toFixed(PriceDecimalPlace), _G("BuyTimes"), _G("SellTimes"), _G("BuyTimes")+_G("SellTimes")]);
 		accounttable1.rows = newrows;
 	}
 	LogStatus("`" + JSON.stringify(ArgTables)+"`\n`" + JSON.stringify(AccountTables)+"`\n 策略累计收益："+ _G("TotalProfit")+ "\n 策略启动时间："+ StartTime + " 累计刷新次数："+ TickTimes + " 最后刷新时间："+ _D());	
@@ -485,7 +508,7 @@ function main() {
 			Log("波段已经完成，程序运行结束。");
 			break;
 		}
-		Sleep(20 * 1000);
+		Sleep(10 * 1000);
 	}
 	//清空波段变量
 	_G("LastOrderId", null);
