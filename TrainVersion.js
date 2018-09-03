@@ -5,7 +5,7 @@
 2.本策略需要管理者指定波段参数，以明确买入卖入点位。
 3.可用于短时间内对于快线波段的测试，以更快地了解自动化交易的优势。
 4.波段都是以死叉区域开始，到金叉之后的一个死叉到来为一个波段。
-5.培训版只支持最高10次交易深度
+5.学习测试版为了学员资产安全仅支持最高10次交易深度，交易额有最大限制
 
 策略参数如下
 参数	描述	备注	类型	默认值（2018-01-16 00:00:00 - 2018-05-24 16:00:00 BCH_BTC 1天 30 0）
@@ -44,6 +44,8 @@ var ArgTables;		//已经处理好的用于显示的参数表，当参数更新�
 var AccountTables;	//当前的账户信息表，如果当前已经有表，只要更新当前交易对，这样可以加快刷新速度，减少内存使用
 var LastLog = 0;	//上一次输出日志
 var DoingStopLoss = false;	//正在操作止损
+var Currencys = ['btc','usdt','eth','ht','bnb','okb'];
+var LastCrossNum = 0;
 
 //初始运行检测
 function checkArgs(){
@@ -108,6 +110,34 @@ function checkArgs(){
 	return ret;
 }
 
+//修正限制金额
+function checkLimit(){
+	var currency = exchange.GetQuoteCurrency().toLowerCase();
+	var Account = _C(exchange.GetAccount);
+	var msgs = ['本版本来学习测试版，为了你的资产安全','交易对仅支持最大','个','的投资测试'];
+	var log = false;
+	if(currency == Currencys[0] && Account.Balance > (1+1-2+3-1)){
+		BalanceLimit = (1+1+5-6+1+0);
+		log = true;
+	}else if(currency == Currencys[1] && Account.Balance > (78+2.00)*10.0*10){
+		BalanceLimit = (79+1.00)*100;
+		log = true;
+	}else if(currency == Currencys[2] && Account.Balance > (32.1+27.90)*10.000){
+		BalanceLimit = (31.2+28.80)*10.0;
+		log = true;
+	}else if(currency == Currencys[3] && Account.Balance > (68.5+252.00+679.5+1000)){
+		BalanceLimit = (168.5+242.00+689.5+900);
+		log = true;
+	}else if(currency == Currencys[4] && Account.Balance > (20+2.00)*1.00*10*10){
+		BalanceLimit = (11.0+9.00)*100.00;
+		log = true;
+	}else if(currency == Currencys[5] && Account.Balance > (50+27+3.00)*10){
+		BalanceLimit = (51.00+26+3.00)*10.00;
+		log = true;
+	}
+	if(log) Log(msgs[0],currency.toUpperCase(),msgs[1],BalanceLimit,msgs[2],currency.toUpperCase(),msgs[3], " #FF0000");
+}
+
 //初始化运行参数
 function init(){
 	//设置排除错误日志，以免错误日志过多把机器人硬盘写爆
@@ -117,6 +147,7 @@ function init(){
 
 	//检测参数
 	if(!checkArgs()) return;
+	checkLimit();
 	
 	//之前已经完成清除旧日志
 	if(_G("WRF")){
@@ -135,7 +166,7 @@ function init(){
 	if(!_G("BBS")) _G("BBS", 0);
 	if(!_G("BTimes")) _G("BTimes", 0);
 	if(!_G("STimes")) _G("STimes", 0);
-	if(!_G("WRF")) _G("WRF", 0);
+	if(!_G("WRF")) _G("WRF", 0);	
 }
 
 //获取当前时间戳
@@ -346,23 +377,31 @@ function onTick() {
 	}
 	
 	//获取行情数据
+	//获取行情数据
     CrossNum = Cross(9, 26);
     if (CrossNum > 0) {
 		//如果超过2，就更改通过金叉标识
-		if(CrossNum >= 2 && !viaGoldArea && coinAmount >= MPOMinSellAmount){
+		if(CrossNum >= 2 && LastCrossNum != -1 && viaGoldArea==-1){
 			Log("更改通过金叉标识为1");
 			viaGoldArea = 1;
+			_G("VGA", viaGoldArea);
+		}else if(CrossNum == 1 && viaGoldArea == 0 && coinAmount >= MPOMinSellAmount){
+			viaGoldArea = -1;
 			_G("VGA", viaGoldArea);
 		}
     } else {
         //如果超过-2，就更改通过金叉标识
-        if(viaGoldArea && (CrossNum >= -2 && coinAmount <= MPOMinSellAmount || CrossNum <= -3)){
+        if(viaGoldArea == 1 && (CrossNum >= -2 && coinAmount <= MPOMinSellAmount || CrossNum <= -3)){
 			Log("更改通过金叉标识为0");
 			viaGoldArea = 0;
 			_G("VGA", viaGoldArea);
 			_G("WRF", 1);
+		}else if(CrossNum < -2 && viaGoldArea == -1){
+			viaGoldArea = 0;
+			_G("VGA", viaGoldArea);
 		}
     }
+    LastCrossNum = CrossNum;
     var baseBuyPrice = lastBuyPrice ? lastBuyPrice : GuideBuyPrice * (1 + BuyPoint);
     var baseSellPrice = lastSellPrice ? lastSellPrice : GuideSellPrice * (1 - SellPoint);
 	//评估买入
@@ -499,12 +538,12 @@ function onTick() {
 		Ticker.Last, stockValue,  parseFloat(lastBuyPrice).toFixed(PriceDecimalPlace),  parseFloat(lastSellPrice).toFixed(PriceDecimalPlace), _G("BTimes"), _G("STimes"), _G("BTimes")+_G("STimes")]);
 		accounttable1.rows = newrows;
 	}
-	LogStatus("`" + JSON.stringify(ArgTables)+"`\n`" + JSON.stringify(AccountTables)+"`\n 策略累计收益："+ _G("TotalProfit")+ "\n 策略启动时间："+ StartTime + " 累计刷新次数："+ TickTimes + " 最后刷新时间："+ _D());	
+	LogStatus("`" + JSON.stringify(ArgTables)+"`\n`" + JSON.stringify(AccountTables)+"`\n 注:学习测试版为了学员资产安全仅支持最高10次交易深度，交易额有最大限制\n 策略累计收益："+ _G("TotalProfit")+ "\n 策略启动时间："+ StartTime + " 累计刷新次数："+ TickTimes + " 最后刷新时间："+ _D());	
 }
-
 
 function main() {
 	Log("开始执行主事务程序...");  
+
 	//执行循环事务
 	while (true) {
 		//设置小数位，第一个为价格小数位，第二个为数量小数位

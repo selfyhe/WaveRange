@@ -43,6 +43,7 @@ var ArgTables;		//已经处理好的用于显示的参数表，当参数更新�
 var AccountTables;	//当前的账户信息表，如果当前已经有表，只要更新当前交易对，这样可以加快刷新速度，减少内存使用
 var LastLog = 0;	//上一次输出日志
 var DoingStopLoss = false;	//正在操作止损
+var LastCrossNum = 0;
 
 //初始运行检测
 function checkArgs(){
@@ -347,20 +348,27 @@ function onTick() {
     CrossNum = Cross(9, 26);
     if (CrossNum > 0) {
 		//如果超过2，就更改通过金叉标识
-		if(CrossNum >= 2 && !viaGoldArea && coinAmount >= MPOMinSellAmount){
+		if(CrossNum >= 2 && LastCrossNum != -1 && viaGoldArea==-1){
 			Log("更改通过金叉标识为1");
 			viaGoldArea = 1;
+			_G("ViaGoldArea", viaGoldArea);
+		}else if(CrossNum == 1 && viaGoldArea == 0 && coinAmount >= MPOMinSellAmount){
+			viaGoldArea = -1;
 			_G("ViaGoldArea", viaGoldArea);
 		}
     } else {
         //如果超过-2，就更改通过金叉标识
-        if(viaGoldArea && (CrossNum >= -2 && coinAmount <= MPOMinSellAmount || CrossNum <= -3)){
+        if(viaGoldArea == 1 && (CrossNum >= -2 && coinAmount <= MPOMinSellAmount || CrossNum <= -3)){
 			Log("更改通过金叉标识为0");
 			viaGoldArea = 0;
 			_G("ViaGoldArea", viaGoldArea);
 			_G("WaveRangFinish", 1);
+		}else if(CrossNum < -2 && viaGoldArea == -1){
+			viaGoldArea = 0;
+			_G("ViaGoldArea", viaGoldArea);
 		}
     }
+    LastCrossNum = CrossNum;
     var baseBuyPrice = lastBuyPrice ? lastBuyPrice : GuideBuyPrice * (1 + BuyPoint);
     var baseSellPrice = lastSellPrice ? lastSellPrice : GuideSellPrice * (1 - SellPoint);
 	//评估买入
