@@ -21,6 +21,7 @@ GuideSellPrice	指导卖出价	开始卖出的指导价格	数字型(number)	80
 SellPoint	卖出点	指导价或是上次卖出价上涨几个点之后开始卖出	数字型(number)	0.05
 DeathClearAll	进入死叉自动平仓	由此参数决定在上涨后下跌回死叉是否自动平仓	布尔型(true/false)	false
 -------------------------------
+NowCoinPrice 现有持仓成本	现有持仓成本价格	数字型(number)	0
 BuyFee	平台买入手续费	平台买入手续费，填写数值，如0.2%就填0.002	数字型(number)	0.002
 SellFee	平台卖出手续费	平台卖出手续费，填写数值，如0.2%就填0.002	数字型(number)	0.002
 PriceDecimalPlace	交易价格小数位	交易对的价格小数位	数字型(number)	2
@@ -73,8 +74,8 @@ function checkArgs(){
 		Log("参数：止盈平仓价格为非正数，必须填写正数，不能为0。 #FF0000");
 		ret = false;
 	}
-	if(StopLoss <= 0){
-		Log("参数：止损线强制平仓价格为非正数，必须填写正数，不能为0。 #FF0000");
+	if(StopLoss < 0){
+		Log("参数：止损线强制平仓价格为负数，必须填写正数。 #FF0000");
 		ret = false;
 	}
 	if(BuyFee <= 0 || SellFee <= 0){
@@ -115,9 +116,6 @@ function init(){
 
 	Log("波段量化交易策略启动...");  
 
-	//检测参数
-	if(!checkArgs()) return;
-	
 	//之前已经完成清除旧日志
 	if(_G("WaveRangFinish")){
 		LogReset();
@@ -128,7 +126,7 @@ function init(){
 	if(!_G("TotalProfit")) _G("TotalProfit", 0);
 	if(!_G("LastOrderId")) _G("LastOrderId", 0);
 	if(!_G("OperatingStatus")) _G("OperatingStatus", OPERATE_STATUS_NONE);
-	if(!_G("AvgPrice")) _G("AvgPrice", 0);
+	if(!_G("AvgPrice")) _G("AvgPrice", NowCoinPrice?NowCoinPrice:0);
 	if(!_G("LastBuyPrice")) _G("LastBuyPrice", 0);
 	if(!_G("LastSellPrice")) _G("LastSellPrice", 0);
 	if(!_G("ViaGoldArea")) _G("ViaGoldArea", 0);
@@ -458,19 +456,20 @@ function onTick() {
 		table.title = "策略参数表";
 		table.cols = ['参数', '参数名称', '值'];
 		var rows = [];
-		rows.push(['GuideBuyPrice','指导买入价', GuideBuyPrice]);		
-		rows.push(['GuideSellPrice','指导卖出价', GuideSellPrice]);		
-		rows.push(['BuyPoint','买入点', BuyPoint]);		
-		rows.push(['SellPoint','卖出点', SellPoint]);		
-		rows.push(['OperateFineness','买卖操作的粒度', OperateFineness]);		
-		rows.push(['BalanceLimit','买入金额数量限制', BalanceLimit]);		
 		rows.push(['WRBPrice','波段底部价格', WRBPrice]);		
-		rows.push(['TPPrice','止盈平仓价格', TPPrice]);		
-		rows.push(['StopLoss','止损线强制平仓价格', StopLoss]);		
+		rows.push(['GuideBuyPrice','指导买入价', GuideBuyPrice]);		
+		rows.push(['OperateFineness','买卖操作的粒度', OperateFineness]);		
+		rows.push(['BuyPoint','买入点', BuyPoint]);		
+		rows.push(['BalanceLimit','买入金额数量限制', BalanceLimit]);		
 		rows.push(['AutoFull','到达底部价格自动满仓', AutoFull?'允许':'不允许']);		
+		rows.push(['StopLoss','止损线强制平仓价格', StopLoss]);		
+		rows.push(['TPPrice','止盈平仓价格', TPPrice]);		
+		rows.push(['GuideSellPrice','指导卖出价', GuideSellPrice]);		
+		rows.push(['SellPoint','卖出点', SellPoint]);		
 		rows.push(['DeathClearAll','进入死叉自动平仓', DeathClearAll?'允许':'不允许']);		
 		rows.push(['BuyFee','平台买入手续费', BuyFee]);		
 		rows.push(['SellFee','平台卖出手续费', SellFee]);		
+		rows.push(['NowCoinPrice','现有持仓成本', NowCoinPrice]);		
 		rows.push(['PriceDecimalPlace','交易对价格小数位', PriceDecimalPlace]);		
 		rows.push(['StockDecimalPlace','交易对数量小数位', StockDecimalPlace]);		
 		rows.push(['TradeLimits','市价单交易限额', '最小买入量：'+MPOMinBuyAmount+'，最大买入量：'+MPOMaxBuyAmount+'，最小卖出量：'+MPOMinSellAmount+'，最大卖出量：'+MPOMaxSellAmount]);		
@@ -505,6 +504,9 @@ function onTick() {
 
 function main() {
 	Log("开始执行主事务程序...");  
+	//检测参数
+	if(!checkArgs()) return;
+	
 	//执行循环事务
 	while (true) {
 		//设置小数位，第一个为价格小数位，第二个为数量小数位
