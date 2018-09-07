@@ -1,0 +1,66 @@
+2018-02-05 06:00:00 - 2018-02-10 11:00:00 BCH_BTC 1小时 50 0
+参数	值
+WRBPrice	0.125
+GuideBuyPrice	0.1315
+OperateFineness	4.9
+BuyPoint	0.002
+BalanceLimit	0
+AutoFull	false
+StopLoss	0
+-------------------------------
+TPPrice	0.138
+SetSellPrice	false
+GuideSellPrice	00
+SellPoint	0.008
+DeathClearAll	false
+
+可用余额	可用币数	持仓均价	持仓成本	当前币价	持币价值	上次买入价	上次卖出价	买入次数	卖出次数	总交易次数
+51.21040554	0	0.124834	0	0.149349	0	0.120300	0.140544	16	13	29
+策略累计收益：1.210379
+
+策略启动时间：2018-02-05 06:00:00 累计刷新次数：2558 最后刷新时间：2018-02-10 05:00:00
+
+2018-01-15 00:00:00 - 2018-01-19 11:00:00 BCH_BTC 1小时 50 0
+参数	值
+WRBPrice	0.122
+GuideBuyPrice	0.156
+OperateFineness	12.8
+BuyPoint	0.011
+BalanceLimit	0
+AutoFull	false
+StopLoss	0
+-------------------------------
+TPPrice	0.19
+SetSellPrice	false
+GuideSellPrice	0
+SellPoint	0.046
+DeathClearAll	false
+
+可用余额	可用币数	持仓均价	持仓成本	当前币价	持币价值	上次买入价	上次卖出价	买入次数	卖出次数	总交易次数
+55.27470911	0	0.113941	0	0.157741	0	0.100000	0.172031	3	3	6
+策略累计收益：5.274704
+
+策略启动时间：2018-01-15 00:00:00 累计刷新次数：2171 最后刷新时间：2018-01-19 10:59:00
+
+
+2018-01-16 00:00:00 - 2018-05-24 16:00:00 BCH_BTC 1天 50 0
+参数	值
+WRBPrice	0.092
+GuideBuyPrice	0.1345
+OperateFineness	14
+BuyPoint	0.018
+BalanceLimit	0
+AutoFull	true
+StopLoss	0
+-------------------------------
+TPPrice	0.177
+SetSellPrice	true
+GuideSellPrice	0.15
+SellPoint	0.018
+DeathClearAll	true
+
+可用余额	可用币数	持仓均价	持仓成本	当前币价	持币价值	上次买入价	上次卖出价	买入次数	卖出次数	总交易次数
+91.87207555	0	0.098292	0	0.145764	0	0.091720	0.178558	22	19	41
+策略累计收益：41.872291000000004
+
+策略启动时间：2018-01-16 00:00:00 累计刷新次数：32539 最后刷新时间：2018-05-22 00:00:00

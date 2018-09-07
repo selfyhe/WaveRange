@@ -1,14 +1,15 @@
 /**************************************
-波段量化交易策略V1.0
+波段量化交易策略V1.1
 说明：
 1.本策略以一个波段为一个程序的执行周期，每次完成平仓自动停止运行。
 2.本策略需要管理者指定波段参数，以明确买入卖入点位。
 3.可用于短时间内对于快线波段的测试，以更快地了解自动化交易的优势。
 4.波段都是以死叉区域开始，到金叉之后的一个死叉到来为一个波段。
+5.可以支持短线快速波动机会，不一定是一个完整波段。
 
 策略参数如下
 参数	描述	备注	类型	默认值
-WRBPrice	波段底部价格	波段下行阶段的底部价格如果达到可以满仓	数字型(number)	300
+WRBPrice	(?买入参数)预测波段底部价格	波段下行阶段的底部价格如果达到可以满仓	数字型(number)	300
 GuideBuyPrice	指导买入价	开始买入的指导价格	数字型(number)	80
 OperateFineness	买卖操作的粒度	单次买入卖出的币数量	数字型(number)	80
 BuyPoint	买入点	指导价或是上次买入价下跌几个点之后开始买入	数字型(number)	0.03
@@ -16,12 +17,13 @@ BalanceLimit	买入金额数量限制	限制在这个交易对总共可以买入
 AutoFull	到达底部价格自动满仓	由此参数决定是否在价格到达底部后操作买入满仓	布尔型(true/false)	false
 StopLoss	止损线强制平仓价格	下行买入过程中一路下行达到此止损线要操作止损平仓	数字型(number)	300
 -------------------------------
-TPPrice	顶部止盈平仓价格	波段上行阶段的顶部价格如果达到可以平仓	数字型(number)	300
-GuideSellPrice	指导卖出价	开始卖出的指导价格	数字型(number)	80
+TPPrice	(?卖出参数)预测波段顶部价格	波段上行阶段的顶部价格如果达到将会自动操作止盈平仓	数字型(number)	300
+SetSellPrice	设定卖出指导价	不采用自动卖出指导价	布尔型(true/false)	false
+GuideSellPrice@SetSellPrice	指定卖出指导价	设置开始卖出的指导价格	数字型(number)	0
 SellPoint	卖出点	指导价或是上次卖出价上涨几个点之后开始卖出	数字型(number)	0.05
 DeathClearAll	进入死叉自动平仓	由此参数决定在上涨后下跌回死叉是否自动平仓	布尔型(true/false)	false
 -------------------------------
-NowCoinPrice 现有持仓成本	现有持仓成本价格	数字型(number)	0
+NowCoinPrice (?其他参数)现有持仓成本	现有持仓成本价格	数字型(number)	0
 BuyFee	平台买入手续费	平台买入手续费，填写数值，如0.2%就填0.002	数字型(number)	0.002
 SellFee	平台卖出手续费	平台卖出手续费，填写数值，如0.2%就填0.002	数字型(number)	0.002
 PriceDecimalPlace	交易价格小数位	交易对的价格小数位	数字型(number)	2
@@ -45,6 +47,7 @@ var AccountTables;	//当前的账户信息表，如果当前已经有表，只�
 var LastLog = 0;	//上一次输出日志
 var DoingStopLoss = false;	//正在操作止损
 var LastCrossNum = 0;
+var Records;
 
 //初始运行检测
 function checkArgs(){
@@ -54,7 +57,7 @@ function checkArgs(){
 		Log("参数：指导买入价为非正数，可以填写正数。 #FF0000");
 		ret = false;
 	}
-	if(GuideSellPrice <= 0){
+	if(SetSellPrice && GuideSellPrice <= 0){
 		Log("参数：指导卖出价为非正数，可以填写正数。 #FF0000");
 		ret = false;
 	}
@@ -141,6 +144,24 @@ function getTimestamp(){
 	return new Date().getTime();
 }
 
+//取得倍率,type=1，买入，type=2，卖出
+function getFastTime(type){
+	var times = 1;
+	var now = getTimestamp();
+	if(type == 1){
+		if(_G("LastBuy") && (now - _G("LastBuy") < 3600000)){
+			var btimes = _G("LXBuyTimes");
+			times = btimes+1;
+		}		
+	}else{
+		if(_G("LastSell") && (now - _G("LastSell") < 3600000)){
+			var stimes = _G("LXSellTimes");
+			times = stimes+1;
+		}
+	}	
+	return times;
+}
+
 function Cross(a, b) {
     var crossNum = 0;
     var arr1 = [];
@@ -156,6 +177,7 @@ function Cross(a, b) {
 				records.unshift(record);
 			}
 		}
+		Records = records;
         arr1 = TA.EMA(records, a);
         arr2 = TA.EMA(records, b);
     }
@@ -210,6 +232,15 @@ function changeDataForSell(account,order){
 	tradeTimes++;
 	_G("SellTimes",tradeTimes);
 	
+	//更新最一次买入时间和本K线买入次数
+	var now = getTimestamp();
+	if(_G("LastSell") && (now - _G("LastBuy") < 3600000)){
+		var btimes = _G("LXSellTimes")+1;
+		_G("LXSellTimes", btimes);
+	}else{
+		_G("LXSellTimes", 1);
+	}
+	_G("LastSell", now);
 }
 
 //检测卖出订单是否成功
@@ -259,8 +290,8 @@ function changeDataForBuy(account,order){
 	//计算并调整平均价格
 	avgPrice = parseFloat((Total / coinAmount).toFixed(PriceDecimalPlace));
 	_G("AvgPrice",avgPrice);
-	
-	Log("当前买入后可有币数",coinAmount,"，持币成本",Total);			
+		
+	Log("当前买入后可有币数",coinAmount,"，持币均价",avgPrice,"，持币成本",Total);			
 	
 	//设置最后一次买入价格,仅在买入量超过一半的情况下调整最后买入价格，没到一半继续买入
 	if(order.Price != 0 && order.DealAmount>(order.Amount/2) || order.Price == 0 && order.DealAmount>(order.Amount/order.AvgPrice/2)){
@@ -272,6 +303,17 @@ function changeDataForBuy(account,order){
 	tradeTimes++;
 	_G("BuyTimes",tradeTimes);
 	
+	//更新最一次买入时间和本K线买入次数
+	var now = getTimestamp();
+	if(_G("LastBuy") && (now - _G("LastBuy") < 3600000)){
+		var btimes = _G("LXBuyTimes")+1;
+		_G("LXBuyTimes", btimes);		
+	}else{
+		_G("LXBuyTimes", 1);
+	}
+	_G("LastBuy", now);
+
+
 	//每次买入一次重置上一次卖出价格，方便以新的成本价计算下次卖出价
 	_G("LastSellPrice",0);
 }
@@ -367,10 +409,21 @@ function onTick() {
 		}
     }
     LastCrossNum = CrossNum;
+    
+    //决定操作指导价
     var baseBuyPrice = lastBuyPrice ? lastBuyPrice : GuideBuyPrice * (1 + BuyPoint);
-    var baseSellPrice = lastSellPrice ? lastSellPrice : GuideSellPrice * (1 - SellPoint);
+    var baseSellPrice = 0;
+    if(lastSellPrice > 0){
+    	baseSellPrice = lastSellPrice;
+    }else{
+    	if(avgPrice > 0 && !SetSellPrice){
+			baseSellPrice = avgPrice;
+		}else{
+    		baseSellPrice = GuideSellPrice * (1 - SellPoint);
+		}
+    }
 	//评估买入
-	if (CrossNum < 0 && Account.Balance > MPOMinBuyAmount && !DoingStopLoss && (BalanceLimit > 0 && costTotal < BalanceLimit || BalanceLimit == 0) && (Ticker.Sell < baseBuyPrice * (1 - BuyPoint) || AutoFull && Ticker.Sell < WRBPrice)) {
+	if (CrossNum < 0 && Account.Balance > MPOMinBuyAmount && !DoingStopLoss && (BalanceLimit > 0 && costTotal < BalanceLimit || BalanceLimit == 0) && (Ticker.Sell < baseBuyPrice * (1 - BuyPoint*getFastTime(1)) || AutoFull && Ticker.Sell < WRBPrice)) {
 		if(AutoFull && Ticker.Sell < WRBPrice){
 			Log("价格达到预定波段底部价格线，按操作粒度进行买入到满仓。");
 		}
@@ -383,8 +436,9 @@ function onTick() {
 			}
 		}
 		var canbuy = canpay/Ticker.Sell;
-		opAmount = canbuy > OperateFineness? OperateFineness : canbuy;
-		var buyfee = opAmount*Ticker.Sell;
+		var operatefineness = OperateFineness*(GuideBuyPrice/Ticker.Sell)*getFastTime(1);
+		opAmount = canbuy > operatefineness? operatefineness : canbuy;
+		var buyfee = parseFloat((opAmount*Ticker.Sell).toFixed(PriceDecimalPlace));
 		if(MPOMaxBuyAmount < buyfee){
 			buyfee = MPOMaxBuyAmount;
 			opAmount = buyfee/Ticker.Sell;
@@ -399,19 +453,38 @@ function onTick() {
 	}
 	if(!orderid){
 		//评估卖出
-		if (coinAmount > MPOMinSellAmount && (CrossNum > 0 && (Ticker.Buy > TPPrice || Ticker.Buy > baseSellPrice * (1 + SellPoint)) || DeathClearAll && viaGoldArea && (CrossNum === -1 || CrossNum === -2) && Ticker.Buy > avgPrice || CrossNum < 0 && Ticker.Buy <= StopLoss)) {
+		var sellFastTime = getFastTime(2);
+		var TPNow = false;
+		if(CrossNum < 0 && Ticker.Buy/avgPrice > 1.08){
+			var lastrecord = Records[Records.length -1];
+			var secondrecord = Records[Records.length -2];
+			if(secondrecord.Open/secondrecord.Low > 1.1 || lastrecord.Open/lastrecord.Low > 1.1){
+				var now = getTimestamp();
+				var lastbuy = _G("LastBuy");
+				if(!lastbuy) lastbuy = now;
+				var diff = now-lastbuy;
+				if(diff > 1800000){
+					TPNow = true;
+					Log("出现超跌抄底，现已经出现浮盈，进行平仓");
+				}
+			}
+		}
+		if (coinAmount > MPOMinSellAmount && (TPNow || Ticker.Buy > TPPrice || Ticker.Buy > baseSellPrice * (1 + SellPoint*sellFastTime) || DeathClearAll && viaGoldArea && (CrossNum === -1 || CrossNum === -2) && Ticker.Buy > avgPrice || CrossNum < 0 && Ticker.Buy <= StopLoss)) {
 			var dosell = true;
 			if(CrossNum < 0){
 				if(Ticker.Buy <= StopLoss){
 					Log("价格跌下止损线，对现有持仓进行强制平仓。");
 					if(!DoingStopLoss) DoingStopLoss = true;
+				}else if(TPNow || Ticker.Buy > baseSellPrice * (1 + SellPoint*sellFastTime)){
+					Log("死叉内短线浮盈，对现有止盈获得头寸。");
 				}else{
 					Log("进入了死叉，对现有获利盘持仓进行平仓。");
 				}
 			}else{
 				Log("进入了盈利空间，对现有获利盘持仓进行止盈。");
 			}
-			opAmount = coinAmount > OperateFineness? OperateFineness : _N((coinAmount + 0),StockDecimalPlace);
+			var operatefineness = parseFloat((OperateFineness*(Ticker.Buy/avgPrice)*sellFastTime).toFixed(StockDecimalPlace));
+			opAmount = coinAmount > operatefineness? operatefineness : _N((coinAmount + 0),StockDecimalPlace);
 			if(MPOMaxSellAmount < opAmount){
 				opAmount = MPOMaxSellAmount;
 			}
@@ -464,7 +537,8 @@ function onTick() {
 		rows.push(['AutoFull','到达底部价格自动满仓', AutoFull?'允许':'不允许']);		
 		rows.push(['StopLoss','止损线强制平仓价格', StopLoss]);		
 		rows.push(['TPPrice','止盈平仓价格', TPPrice]);		
-		rows.push(['GuideSellPrice','指导卖出价', GuideSellPrice]);		
+		rows.push(['SetSellPrice','指定卖出指导价格', SetSellPrice?'指定':'自动']);		
+		rows.push(['GuideSellPrice','指导卖出价', SetSellPrice?GuideSellPrice:'均价上浮一个卖出点']);		
 		rows.push(['SellPoint','卖出点', SellPoint]);		
 		rows.push(['DeathClearAll','进入死叉自动平仓', DeathClearAll?'允许':'不允许']);		
 		rows.push(['BuyFee','平台买入手续费', BuyFee]);		
@@ -511,7 +585,7 @@ function main() {
 	while (true) {
 		//设置小数位，第一个为价格小数位，第二个为数量小数位
 		exchange.SetPrecision(PriceDecimalPlace, StockDecimalPlace);
-		//操作长线交易
+		//操作交易
 		onTick();
 		//判断完成
 		if(_G("WaveRangFinish")){
