@@ -1,5 +1,5 @@
 /**************************************
-波段量化交易策略V1.1
+波段量化交易策略V1.2
 说明：
 1.本策略以一个波段为一个程序的执行周期，每次完成平仓自动停止运行。
 2.本策略需要管理者指定波段参数，以明确买入卖入点位。
@@ -132,7 +132,7 @@ function init(){
 	if(!_G("AvgPrice")) _G("AvgPrice", NowCoinPrice?NowCoinPrice:0);
 	if(!_G("LastBuyPrice")) _G("LastBuyPrice", 0);
 	if(!_G("LastSellPrice")) _G("LastSellPrice", 0);
-	if(!_G("ViaGoldArea")) _G("ViaGoldArea", 0);
+	if(!_G("ViaGoldArea")) _G("ViaGoldArea", -2);
 	if(!_G("BeforeBuyingStocks")) _G("BeforeBuyingStocks", 0);
 	if(!_G("BuyTimes")) _G("BuyTimes", 0);
 	if(!_G("SellTimes")) _G("SellTimes", 0);
@@ -392,7 +392,7 @@ function onTick() {
 			Log("更改通过金叉标识为1");
 			viaGoldArea = 1;
 			_G("ViaGoldArea", viaGoldArea);
-		}else if(CrossNum == 1 && viaGoldArea == 0 && coinAmount >= MPOMinSellAmount){
+		}else if(CrossNum == 1 && viaGoldArea == -2 && coinAmount >= MPOMinSellAmount){
 			viaGoldArea = -1;
 			_G("ViaGoldArea", viaGoldArea);
 		}
@@ -402,9 +402,15 @@ function onTick() {
 			Log("更改通过金叉标识为0");
 			viaGoldArea = 0;
 			_G("ViaGoldArea", viaGoldArea);
-			_G("WaveRangFinish", 1);
+			if(coinAmount <= MPOMinSellAmount){
+				//停止
+				_G("WaveRangFinish", 1);
+			}else{
+				//继续
+				viaGoldArea = -2;
+			}
 		}else if(CrossNum < -2 && viaGoldArea == -1){
-			viaGoldArea = 0;
+			viaGoldArea = -2;
 			_G("ViaGoldArea", viaGoldArea);
 		}
     }
@@ -469,7 +475,7 @@ function onTick() {
 				}
 			}
 		}
-		if (coinAmount > MPOMinSellAmount && (TPNow || Ticker.Buy > TPPrice || Ticker.Buy > baseSellPrice * (1 + SellPoint*sellFastTime) || DeathClearAll && viaGoldArea && (CrossNum === -1 || CrossNum === -2) && Ticker.Buy > avgPrice || CrossNum < 0 && Ticker.Buy <= StopLoss)) {
+		if (coinAmount > MPOMinSellAmount && (TPNow || Ticker.Buy > TPPrice || Ticker.Buy > baseSellPrice * (1 + SellPoint*sellFastTime) || DeathClearAll && viaGoldArea == 1 && (CrossNum === -1 || CrossNum === -2) && Ticker.Buy > avgPrice || CrossNum < 0 && Ticker.Buy <= StopLoss)) {
 			var dosell = true;
 			if(CrossNum < 0){
 				if(Ticker.Buy <= StopLoss){
