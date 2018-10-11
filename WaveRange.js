@@ -1,5 +1,5 @@
 /**************************************
-波段量化交易策略V1.2.1
+波段量化交易策略V1.2.2
 说明：
 1.本策略以一个波段为一个程序的执行周期，每次完成平仓自动停止运行。
 2.本策略需要管理者指定波段参数，以明确买入卖入点位。
@@ -265,6 +265,7 @@ function checkSellFinish(account,ticker){
 				Log("订单",lastOrderId,"未有成交!卖出价格：",order.Price,"，当前价：",ticker.Last,"，价格差：",_N(order.Price - ticker.Last, PriceDecimalPlace));
 			}else{
 				Log("市价卖出订单",lastOrderId,"未有成交!");
+				ret = false;
 			}
 		}
 		//撤消没有完成的限价订单
@@ -327,6 +328,7 @@ function changeDataForBuy(account,order){
 
 //检测买入订单是否成功
 function checkBuyFinish(account, ticker){
+	var ret = true;
 	var lastOrderId = _G("LastOrderId");
 	var order = exchange.GetOrder(lastOrderId);
 	if(order.Status === ORDER_STATE_CLOSED ){
@@ -341,6 +343,7 @@ function checkBuyFinish(account, ticker){
 				Log("买入订单",lastOrderId,"未有成交!订单买入价格：",order.Price,"，当前卖一价：",ticker.Sell,"，价格差：",_N(order.Price - ticker.Sell, PriceDecimalPlace));
 			}else{
 				Log("市价买入订单",lastOrderId,"未有成交!");
+				ret = false;
 			}
 		}
 		//撤消没有完成的限价订单
@@ -350,6 +353,7 @@ function checkBuyFinish(account, ticker){
 			Sleep(1300);
 		}
 	}
+	return ret;
 }
 
 //定时任务，主业务流程 
@@ -360,15 +364,20 @@ function onTick() {
 	
 	//检测上一个订单，成功就改状态，不成功就取消重新发
 	if(_G("LastOrderId") && _G("OperatingStatus") != OPERATE_STATUS_NONE){
+		var ret = false;
 		if(_G("OperatingStatus") > OPERATE_STATUS_BUY){
-			checkSellFinish(Account, Ticker);
+			ret = checkSellFinish(Account, Ticker);
 		}else{
-			checkBuyFinish(Account, Ticker);
+			ret = checkBuyFinish(Account, Ticker);
 		}
-		//刚才上一次订单ID清空，不再重复判断
-		_G("LastOrderId",0);
-		//重置操作状态
-		_G("OperatingStatus", OPERATE_STATUS_NONE);
+		if(ret){
+			//刚才上一次订单ID清空，不再重复判断
+			_G("LastOrderId",0);
+			//重置操作状态
+			_G("OperatingStatus", OPERATE_STATUS_NONE);
+		}else{
+			return;
+		}
 	}
 
     //定义并初始化其他变量
