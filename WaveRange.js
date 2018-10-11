@@ -1,5 +1,5 @@
 /**************************************
-波段量化交易策略V1.2
+波段量化交易策略V1.2.1
 说明：
 1.本策略以一个波段为一个程序的执行周期，每次完成平仓自动停止运行。
 2.本策略需要管理者指定波段参数，以明确买入卖入点位。
@@ -32,6 +32,8 @@ MPOMinBuyAmount	市价单最小买入量	市价单最小买入量	数字型(numb
 MPOMaxBuyAmount	市价单最大买入量	市价单最大买入量	数字型(number)	0
 MPOMinSellAmount	市价单最小卖出量	市价单最小卖出量	数字型(number)	0
 MPOMaxSellAmount	市价单最大卖出量	市价单最大卖出量	数字型(number)	0
+ResetLastPrice		是否重置最后价格	重置后按当前成本价操作	布尔型(true/false)	false
+ClearLog	是否清除日志	清空当前日志	布尔型(true/false)	false
 ************************************************/
 
 //全局常数定义
@@ -120,7 +122,7 @@ function init(){
 	Log("波段量化交易策略启动...");  
 
 	//之前已经完成清除旧日志
-	if(_G("WaveRangFinish")){
+	if(_G("WaveRangFinish") || ClearLog){
 		LogReset();
 		_G("WaveRangFinish", null);
 	}
@@ -130,8 +132,13 @@ function init(){
 	if(!_G("LastOrderId")) _G("LastOrderId", 0);
 	if(!_G("OperatingStatus")) _G("OperatingStatus", OPERATE_STATUS_NONE);
 	if(!_G("AvgPrice")) _G("AvgPrice", NowCoinPrice?NowCoinPrice:0);
-	if(!_G("LastBuyPrice")) _G("LastBuyPrice", 0);
-	if(!_G("LastSellPrice")) _G("LastSellPrice", 0);
+	if(ResetLastPrice){
+		_G("LastBuyPrice", 0);
+		_G("LastSellPrice", 0);
+	}else{
+		if(!_G("LastBuyPrice")) _G("LastBuyPrice", 0);
+		if(!_G("LastSellPrice")) _G("LastSellPrice", 0);
+	}
 	if(!_G("ViaGoldArea")) _G("ViaGoldArea", -2);
 	if(!_G("BeforeBuyingStocks")) _G("BeforeBuyingStocks", 0);
 	if(!_G("BuyTimes")) _G("BuyTimes", 0);
@@ -452,6 +459,8 @@ function onTick() {
 		if(buyfee > MPOMinBuyAmount){
 			isOperated = true;
 			Log("准备以大约",Ticker.Sell,"的市价买入约",opAmount,"个币，当前账户余额为：",Account.Balance,"。"); 
+			//设置小数位，第一个为价格小数位，第二个为数量小数位
+			exchange.SetPrecision(PriceDecimalPlace, PriceDecimalPlace);
 			orderid = exchange.Buy(-1,buyfee);
 			_G("OperatingStatus",OPERATE_STATUS_BUY);
 			_G("BeforeBuyingStocks",allCoinAmount);
@@ -497,6 +506,8 @@ function onTick() {
 			if(opAmount > MPOMinSellAmount){
 				isOperated = true;
 				Log("准备以大约",Ticker.Buy,"的市价卖出",opAmount,"个币，当前可用币数",coinAmount);
+				//设置小数位，第一个为价格小数位，第二个为数量小数位
+				exchange.SetPrecision(PriceDecimalPlace, StockDecimalPlace);
 				orderid = exchange.Sell(-1, opAmount);
 				_G("OperatingStatus",OPERATE_STATUS_SELL);
 			}else{
@@ -589,8 +600,6 @@ function main() {
 	
 	//执行循环事务
 	while (true) {
-		//设置小数位，第一个为价格小数位，第二个为数量小数位
-		exchange.SetPrecision(PriceDecimalPlace, StockDecimalPlace);
 		//操作交易
 		onTick();
 		//判断完成
