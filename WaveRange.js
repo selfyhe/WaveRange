@@ -1,5 +1,5 @@
 /**************************************
-波段量化交易策略V1.2.2
+波段量化交易策略V1.1.3
 说明：
 1.本策略以一个波段为一个程序的执行周期，每次完成平仓自动停止运行。
 2.本策略需要管理者指定波段参数，以明确买入卖入点位。
@@ -460,7 +460,7 @@ function onTick() {
 		var canbuy = canpay/Ticker.Sell;
 		var operatefineness = OperateFineness*(GuideBuyPrice/Ticker.Sell)*getFastTime(1);
 		opAmount = canbuy > operatefineness? operatefineness : canbuy;
-		var buyfee = parseFloat((opAmount*Ticker.Sell).toFixed(PriceDecimalPlace));
+		var buyfee = _N(opAmount*Ticker.Sell, PriceDecimalPlace);
 		if(MPOMaxBuyAmount < buyfee){
 			buyfee = MPOMaxBuyAmount;
 			opAmount = buyfee/Ticker.Sell;
